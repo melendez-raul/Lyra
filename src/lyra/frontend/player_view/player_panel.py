@@ -1,8 +1,8 @@
 from backend import PlaybackStatus, Track
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QWidget
 
-from ..rules import AppWidget
+from ..rules import STRETCH, AppWidget, Element, Level
 from .album_art import AlbumArt
 from .playback_controls import PlaybackControls
 from .seek_bar import SeekBar
@@ -21,22 +21,21 @@ class PlayerPanel(AppWidget):
         self.track_info = TrackInfo()
         self.seek_bar = SeekBar()
         self.controls = PlaybackControls()
-        self.seek_bar.seek_requested.connect(self.seek_requested.emit)
-        self.controls.previous_requested.connect(self.previous_requested.emit)
-        self.controls.play_pause_requested.connect(self.play_pause_requested.emit)
-        self.controls.next_requested.connect(self.next_requested.emit)
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(24, 24, 24, 24)
-        self.main_layout.setSpacing(16)
-        self.main_layout.addWidget(self.album_art, 0)
-        self.main_layout.addWidget(self.track_info, 0)
-        self.main_layout.addStretch(1)
-        self.main_layout.addWidget(self.seek_bar, 0)
-        self.main_layout.addWidget(self.controls, 0)
+
+        self.seek_bar.seek_requested.connect(self.seek_requested)
+        self.controls.previous_requested.connect(self.previous_requested)
+        self.controls.play_pause_requested.connect(self.play_pause_requested)
+        self.controls.next_requested.connect(self.next_requested)
+
+        self.main_layout = Element.main_layout(
+            self,
+            [self.album_art, self.track_info, STRETCH, self.seek_bar, self.controls],
+            level=Level.PANEL,
+        )
 
     def set_track(self, track: Track | None) -> None:
         if track is None:
-            self.album_art.clear_cover()
+            self.album_art.set_cover(None)
             self.track_info.set_track_info("", "", "")
             return
         self.album_art.set_cover(track.cover_path)

@@ -1,10 +1,12 @@
-from PySide6.QtCore import QEvent, Qt
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtWidgets import QWidget
 
-from ..rules import AppWidget, Elements
+from ..rules import AppWidget, Element, Level
 
 
 class LyricItem(AppWidget):
+    seek_requested = Signal(float)
+
     def __init__(
         self,
         time: float,
@@ -17,17 +19,20 @@ class LyricItem(AppWidget):
         self.text = text
         self.is_active = False
         self.is_hovered = False
-        self.text_label = Elements.lyric(text)
-        self.text_label.setWordWrap(True)
-        self.text_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.text_label = Element.lyric(text, wrap=True)
+        self.main_layout = Element.main_layout(
+            self, [self.text_label], level=Level.ITEM
         )
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(12, 12, 12, 12)
-        self.main_layout.setSpacing(0)
-        self.main_layout.addWidget(self.text_label)
         self.setProperty("hovered", False)
         self.set_active(is_active)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.seek_requested.emit(self.time)
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
     def set_active(self, active: bool) -> None:
         self.is_active = active

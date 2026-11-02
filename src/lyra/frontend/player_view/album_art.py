@@ -1,31 +1,29 @@
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QPainter, QPixmap
-from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtGui import QPainter, QPainterPath, QPixmap
+from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from ..rules import AppWidget
+from ..rules import AppWidget, Radius
+
+DEFAULT_SIZE = 300
+HINT_WIDTH = 400
 
 
 class AlbumArt(AppWidget):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("albumArt", parent)
-        self._original_pixmap = QPixmap()
+        self._pixmap = QPixmap()
+        self._scaled = QPixmap()
+        self._scaled_size = QSize()
         policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
         self.setMinimumSize(0, 0)
 
     def set_cover(self, path: str | Path | None) -> None:
-        pixmap = QPixmap()
-        if path:
-            pixmap.load(str(path))
-        self._original_pixmap = pixmap
-        self.updateGeometry()
-        self.update()
-
-    def clear_cover(self) -> None:
-        self._original_pixmap = QPixmap()
+        self._pixmap = QPixmap(str(path)) if path else QPixmap()
+        self._scaled_size = QSize()
         self.updateGeometry()
         self.update()
 
@@ -33,28 +31,45 @@ class AlbumArt(AppWidget):
         return True
 
     def heightForWidth(self, width: int) -> int:
-        if self._original_pixmap.isNull():
+        if self._pixmap.isNull():
             return 0
-        ratio = self._original_pixmap.height() / self._original_pixmap.width()
-        return round(width * ratio)
+        return round(width * self._pixmap.height() / self._pixmap.width())
 
     def sizeHint(self) -> QSize:
-        if self._original_pixmap.isNull():
-            return QSize(300, 300)
-        return QSize(400, self.heightForWidth(400))
+        if self._pixmap.isNull():
+            return QSize(DEFAULT_SIZE, DEFAULT_SIZE)
+        return QSize(HINT_WIDTH, self.heightForWidth(HINT_WIDTH))
+
+    def _fitted(self) -> QSize:
+        size = self._pixmap.size()
+        size.scale(self.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        return size
+
+    def _scaled_pixmap(self, target: QSize) -> QPixmap:
+        if self._scaled_size != target:
+            dpr = self.devicePixelRatioF()
+            self._scaled = self._pixmap.scaled(
+                target * dpr,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self._scaled.setDevicePixelRatio(dpr)
+            self._scaled_size = target
+        return self._scaled
 
     def paintEvent(self, event) -> None:
-        if self._original_pixmap.isNull():
+        if self._pixmap.isNull():
             return
+        target = self._fitted()
+        x = (self.width() - target.width()) / 2
+        y = (self.height() - target.height()) / 2
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        target = self._original_pixmap.size()
-        target.scale(self.size(), Qt.AspectRatioMode.KeepAspectRatio)
-        x = (self.width() - target.width()) // 2
-        y = (self.height() - target.height()) // 2
-        scaled_pixmap = self._original_pixmap.scaled(
-            target,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+        painter.setRenderHints(
+            QPainter.RenderHint.Antialiasing | QPainter.RenderHint.SmoothPixmapTransform
         )
-        painter.drawPixmap(x, y, scaled_pixmap)
+        clip = QPainterPath()
+        clip.addRoundedRect(
+            QRectF(x, y, target.width(), target.height()), Radius.MD, Radius.MD
+        )
+        painter.setClipPath(clip)
+        painter.drawPixmap(round(x), round(y), self._scaled_pixmap(target))

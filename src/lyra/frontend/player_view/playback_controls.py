@@ -1,12 +1,7 @@
-from pathlib import Path
-
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QHBoxLayout
 
-from ..rules import AppWidget, Elements
-
-ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
+from ..rules import ICONS_DIR, STRETCH, AppWidget, Element, IconSize
 
 
 class PlaybackControls(AppWidget):
@@ -16,39 +11,40 @@ class PlaybackControls(AppWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__("playbackControls", parent)
-        self.previous_button = Elements.icon_button(
-            ASSETS_DIR / "prev.svg",
+        self.previous_button = Element.icon_button(
+            ICONS_DIR / "prev.svg",
             tooltip="Anterior",
-            icon_size=22,
-            object_name="previousButton",
+            icon_size=IconSize.SM,
+            on_click=self.previous_requested.emit,
         )
-        self.play_button = Elements.icon_button(
-            ASSETS_DIR / "play.svg",
+        self.play_button = Element.icon_button(
+            ICONS_DIR / "play.svg",
             tooltip="Reproducir",
-            icon_size=50,
+            icon_size=IconSize.LG,
             object_name="playButton",
+            on_click=self.play_pause_requested.emit,
         )
-        self.next_button = Elements.icon_button(
-            ASSETS_DIR / "next.svg",
+        self.next_button = Element.icon_button(
+            ICONS_DIR / "next.svg",
             tooltip="Siguiente",
-            icon_size=22,
-            object_name="nextButton",
+            icon_size=IconSize.SM,
+            on_click=self.next_requested.emit,
         )
-        self.previous_button.clicked.connect(self.previous_requested.emit)
-        self.play_button.clicked.connect(self.play_pause_requested.emit)
-        self.next_button.clicked.connect(self.next_requested.emit)
-        self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(8)
-        self.main_layout.addStretch()
-        self.main_layout.addWidget(self.previous_button)
-        self.main_layout.addWidget(self.play_button)
-        self.main_layout.addWidget(self.next_button)
-        self.main_layout.addStretch()
+
+        self.main_layout = Element.row(
+            [
+                STRETCH,
+                self.previous_button,
+                self.play_button,
+                self.next_button,
+                STRETCH,
+            ],
+            parent=self,
+        )
 
     def set_playing(self, playing: bool) -> None:
         icon_name = "pause.svg" if playing else "play.svg"
-        self.play_button.setIcon(QIcon(str(ASSETS_DIR / icon_name)))
+        self.play_button.setIcon(QIcon(str(ICONS_DIR / icon_name)))
         self.play_button.setAccessibleName("Pausar" if playing else "Reproducir")
         self.play_button.setToolTip("Pausar" if playing else "Reproducir")
 
