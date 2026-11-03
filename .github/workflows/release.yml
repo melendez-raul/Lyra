@@ -7,7 +7,15 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-22.04, windows-latest]
+        include:
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            data: "src/lyra/frontend/assets:frontend/assets"
+            flags: ""
+          - os: windows-latest
+            name: windows-x86_64
+            data: "src/lyra/frontend/assets;frontend/assets"
+            flags: "--windowed"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -22,18 +30,25 @@ jobs:
 
       - run: pip install pyinstaller -r requirements.txt
 
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        run: pyinstaller --clean --onefile --name lyra --add-data "src/lyra/frontend:frontend" src/lyra/main.py
+      - name: Build
+        run: >
+          pyinstaller --clean --onefile ${{ matrix.flags }}
+          --name lyra
+          --add-data "${{ matrix.data }}"
+          src/lyra/main.py
 
-      - name: Build (Windows)
+      - name: Empaquetar (Linux)
+        if: runner.os == 'Linux'
+        run: tar -czf lyra-${{ matrix.name }}.tar.gz -C dist lyra
+
+      - name: Empaquetar (Windows)
         if: runner.os == 'Windows'
-        run: pyinstaller --clean --onefile --windowed --name lyra --add-data "src/lyra/frontend;frontend" src/lyra/main.py
+        run: Compress-Archive -Path dist/lyra.exe -DestinationPath lyra-${{ matrix.name }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lyra-${{ matrix.os }}
-          path: dist/*
+          name: lyra-${{ matrix.name }}
+          path: lyra-${{ matrix.name }}.*
 
   release:
     needs: build
@@ -44,6 +59,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: artifacts/*
+          generate_release_notes: true
