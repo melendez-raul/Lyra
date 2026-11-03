@@ -1,15 +1,14 @@
-import atexit
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from pathlib import Path
-from typing import ClassVar, TypeVar
+from typing import TypeVar
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QBoxLayout,
-    QFrame,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QLayout,
@@ -24,36 +23,50 @@ from PySide6.QtWidgets import (
 
 from .custom_elements import ClickSlider
 
-# ==================================
-# CONSTANTS
-# ==================================
+# ======================================================================
+# ESTÁNDARES: todo valor compartido de la interfaz vive en este bloque
+# ======================================================================
 
+# --- config ------------------------------------------------------------
+# colors
+SWATCH_HEIGHT = 30
+TRANSPARENCY_LABEL_WIDTH = 48
+# fonts
+SIZE_RANGE = (6, 200)
+WEIGHT_RANGE = (100, 900)
+SIZE_WIDTH = 90
+WEIGHT_WIDTH = 90
+
+# --- lyrics ------------------------------------------------------------
+SCROLL_DURATION_MS = 400
+RESUME_DELAY_MS = 3000
+
+# --- player ------------------------------------------------------------
+DEFAULT_SIZE = 300
+HINT_WIDTH = 400
+
+
+# --- rutas -------------------------------------------------------------
+ICONS_DIR = Path(__file__).resolve().parent / "assets" / "icons"
+
+# --- tamaños (px) ------------------------------------------------------
+THUMB_SIZE = 75  # miniatura de portada en la lista
+CHECK_SIZE = 22  # indicador del check (el radio del QSS es CHECK_SIZE // 2)
+ICON_BUTTON_PADDING = 30  # espacio alrededor del icono dentro del botón
+SCROLLBAR_GAP = 16  # aire entre el contenido y la barra de scroll
+
+# --- tipos -------------------------------------------------------------
 Margins = tuple[int, int, int, int]  # left, top, right, bottom
-
-ICON_PADDING = 30  # espacio alrededor del icono dentro del botón
-DEFAULT_ICON_BUTTON = "iconButton"
-
-BASE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
-ICONS_DIR = ASSETS_DIR / "icons"
-SELECTORS_FILE = BASE_DIR / "selectors.txt"
-
-
-# ==================================
-# TYPES
-# ==================================
-
-Callback = Callable[[], object]  # click, editingFinished
-BoolCallback = Callable[[bool], object]  # toggled
-TextCallback = Callable[[str], object]  # textChanged
-IntCallback = Callable[[int], object]  # valueChanged
+Callback = Callable[[], object]
+BoolCallback = Callable[[bool], object]
+IntCallback = Callable[[int], object]
 
 
 class Radius(IntEnum):
-    SM = 14  # inputs, albumArt, lyricItem, trackItem
+    XS = 8
+    SM = 14  # inputs, lyricItem, trackItem, albumArt
     MD = 18  # botones pill
     LG = 20  # QToolButton
-    FULL = 9999  # círculo / pill completo (se recorta al lado menor)
 
 
 class IconSize(IntEnum):
@@ -68,19 +81,20 @@ class Spacing:
     gap: int = 0
 
 
-THUMB_SIZE = 75
-
-
 class Level(Enum):
-    NONE = Spacing((0, 0, 0, 0), 0)
-    SECTION = Spacing((0, 0, 0, 0), 16)
-    ROW = Spacing((0, 0, 0, 0), 12)
-    PANEL = Spacing((24, 24, 24, 24), 16)
-    BAR = Spacing((24, 16, 24, 16), 0)  # cabecera de la ventana
-    ITEM = Spacing((12, 12, 12, 12), 12)  # fila de lista con miniatura
-    LIST = Spacing((0, 0, 0, 0), 8)  # separación entre filas
+    """Espaciado estándar. Los márgenes los pone el panel; el gap, el contenedor."""
+
+    # solo gap, de menor a mayor
+    NONE = Spacing((0, 0, 0, 0), 0)  # hijos pegados o un solo hijo
     TIGHT = Spacing((0, 0, 0, 0), 4)  # líneas de texto apiladas
-    PAGE = Spacing((0, 0, 0, 0), 28)  # secciones apiladas dentro de un panel
+    LIST = Spacing((0, 0, 0, 0), 8)  # filas de una lista
+    ROW = Spacing((0, 0, 0, 0), 12)  # elementos en una fila o grupo
+    SECTION = Spacing((0, 0, 0, 0), 16)  # título + contenido
+    PAGE = Spacing((0, 0, 0, 0), 28)  # secciones apiladas en un panel
+    # con márgenes
+    ITEM = Spacing((12, 12, 12, 12), 12)  # fila de lista con miniatura
+    PANEL = Spacing((24, 24, 24, 24), 16)  # panel lateral o de contenido
+    BAR = Spacing((24, 16, 24, 16), 0)  # cabecera de la ventana
 
 
 class _Stretch:
@@ -89,39 +103,37 @@ class _Stretch:
 
 STRETCH = _Stretch()
 
-Child = QWidget | QLayout | tuple[QWidget, int] | _Stretch  # (widget, stretch_factor)
-
+Child = QWidget | QLayout | tuple[QWidget, int] | _Stretch  # (widget, stretch)
 BoxLayout = TypeVar("BoxLayout", bound=QBoxLayout)
 
 
-# ==================================
+# ======================================================================
+# WIDGET BASE
+# ======================================================================
+
+
+class AppWidget(QWidget):
+    def __init__(self, object_name: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName(object_name)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+
+# ======================================================================
 # ELEMENT
-# ==================================
+# Cada elemento usa el nombre de su tipo como objectName ("button",
+# "input", "slider"...). Solo se cambia cuando el QSS necesita una regla
+# propia (por ejemplo "playButton").
+# ======================================================================
 
 
 class Element:
-    _selectors: ClassVar[set[str]] = set()
-
-    # ----------------------------------
-    # SELECTOR REGISTRY
-    # ----------------------------------
-
-    @classmethod
-    def _register(cls, widget: QWidget) -> None:
-        """Anota 'Tipo#nombre' para revisar después qué selectores necesita el QSS."""
-        cls._selectors.add(f"{type(widget).__name__}#{widget.objectName()}")
-
-    @classmethod
-    def dump_selectors(cls, path: Path = SELECTORS_FILE) -> None:
-        if cls._selectors:
-            path.write_text("\n".join(sorted(cls._selectors)) + "\n", encoding="utf-8")
-
     # ----------------------------------
     # LABELS
     # ----------------------------------
 
     @staticmethod
-    def _label(text: str, name: str, wrap: bool = False) -> QLabel:
+    def _label(text: str, name: str, wrap: bool) -> QLabel:
         widget = QLabel(text)
         widget.setObjectName(name)
         if wrap:
@@ -171,49 +183,46 @@ class Element:
         return widget
 
     @staticmethod
-    def toggle_button(
-        text: str,
-        object_name: str = "toggleButton",
-        checked: bool = False,
-        on_toggle: BoolCallback | None = None,
-    ) -> QPushButton:
-        widget = QPushButton(text)
-        widget.setObjectName(object_name)
-        widget.setCheckable(True)
-        widget.setChecked(checked)  # antes de conectar: no dispara el callback
-        widget.setCursor(Qt.CursorShape.PointingHandCursor)
-        if on_toggle is not None:
-            widget.toggled.connect(on_toggle)
-        return widget
-
-    @classmethod
     def icon_button(
-        cls,
         icon: QIcon | str | Path,
         tooltip: str = "",
         icon_size: IconSize = IconSize.SM,
-        object_name: str = DEFAULT_ICON_BUTTON,
+        object_name: str = "iconButton",
         on_click: Callback | None = None,
     ) -> QToolButton:
+        """object_name solo se cambia si el QSS necesita una regla propia."""
         widget = QToolButton()
         widget.setObjectName(object_name)
-        widget.setProperty("appRole", "iconButton")
         widget.setIcon(icon if isinstance(icon, QIcon) else QIcon(str(icon)))
         widget.setIconSize(QSize(icon_size, icon_size))
-        button_size = icon_size + ICON_PADDING
-        widget.setFixedSize(button_size, button_size)
+        size = icon_size + ICON_BUTTON_PADDING
+        widget.setFixedSize(size, size)
         widget.setStyleSheet(
-            f"QToolButton#{object_name} {{ border-radius: {button_size // 2}px; }}"
+            f"QToolButton#{object_name} {{ border-radius: {size // 2}px; }}"
         )
         widget.setToolTip(tooltip)
-        widget.setAccessibleName(tooltip)
         widget.setCursor(Qt.CursorShape.PointingHandCursor)
-        widget.setMouseTracking(True)
         widget.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         if on_click is not None:
             widget.clicked.connect(lambda _checked=False: on_click())
-        if object_name != DEFAULT_ICON_BUTTON:
-            cls._register(widget)
+        return widget
+
+    @staticmethod
+    def check(
+        text: str = "",
+        checked: bool = False,
+        on_toggle: BoolCallback | None = None,
+        tooltip: str = "",
+    ) -> QCheckBox:
+        """Check redondo: lleno si está activo, vacío si no (lo dibuja el QSS)."""
+        widget = QCheckBox(text)
+        widget.setObjectName("check")
+        widget.setChecked(checked)  # antes de conectar: no dispara el callback
+        widget.setCursor(Qt.CursorShape.PointingHandCursor)
+        widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        widget.setToolTip(tooltip)
+        if on_toggle is not None:
+            widget.toggled.connect(on_toggle)
         return widget
 
     # ----------------------------------
@@ -221,19 +230,13 @@ class Element:
     # ----------------------------------
 
     @staticmethod
-    def input(
-        placeholder: str = "",
-        on_edit: Callback | None = None,
-        on_change: TextCallback | None = None,
-    ) -> QLineEdit:
-        """on_edit: Enter o pérdida de foco. on_change: en cada tecla."""
+    def input(placeholder: str = "", on_edit: Callback | None = None) -> QLineEdit:
+        """on_edit: Enter o pérdida de foco."""
         widget = QLineEdit()
         widget.setObjectName("input")
         widget.setPlaceholderText(placeholder)
         if on_edit is not None:
             widget.editingFinished.connect(on_edit)
-        if on_change is not None:
-            widget.textChanged.connect(on_change)
         return widget
 
     @staticmethod
@@ -242,16 +245,15 @@ class Element:
         minimum: int = 0,
         maximum: int = 100,
         value: int = 0,
-        clickable: bool = True,
-        on_change: IntCallback | None = None,  # valueChanged
-        on_press: Callback | None = None,  # sliderPressed
-        on_move: IntCallback | None = None,  # sliderMoved (solo el usuario)
-        on_release: Callback | None = None,  # sliderReleased
+        on_change: IntCallback | None = None,
+        on_press: Callback | None = None,
+        on_move: IntCallback | None = None,
+        on_release: Callback | None = None,
     ) -> QSlider:
-        widget = ClickSlider(orientation) if clickable else QSlider(orientation)
-        widget.setObjectName("appSlider")
+        widget = ClickSlider(orientation)
+        widget.setObjectName("slider")
         widget.setRange(minimum, maximum)
-        widget.setValue(value)
+        widget.setValue(value)  # antes de conectar: no dispara callbacks
         if on_change is not None:
             widget.valueChanged.connect(on_change)
         if on_press is not None:
@@ -260,16 +262,6 @@ class Element:
             widget.sliderMoved.connect(on_move)
         if on_release is not None:
             widget.sliderReleased.connect(on_release)
-        return widget
-
-    # ----------------------------------
-    # CONTAINERS
-    # ----------------------------------
-
-    @staticmethod
-    def card() -> QFrame:
-        widget = QFrame()
-        widget.setObjectName("card")
         return widget
 
     # ----------------------------------
@@ -329,16 +321,20 @@ class Element:
         """Layout vertical raíz: se instala directamente en `parent`."""
         return cls.column(children, level, parent, margins)
 
-    @staticmethod
+    @classmethod
     def scroll(
+        cls,
         name: str,
         children: list[Child],
         level: Level = Level.SECTION,
         margins: Margins | None = None,
         horizontal: bool = True,
     ) -> QScrollArea:
+        left, top, right, bottom = level.value.margins if margins is None else margins
         content = AppWidget(f"{name}Content")
-        Element.main_layout(content, children, level, margins)
+        cls.main_layout(
+            content, children, level, (left, top, right + SCROLLBAR_GAP, bottom)
+        )
         area = QScrollArea()
         area.setObjectName(name)
         area.setWidgetResizable(True)
@@ -347,18 +343,3 @@ class Element:
             area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         area.setWidget(content)
         return area
-
-
-# ==================================
-# BASE WIDGET
-# ==================================
-
-
-class AppWidget(QWidget):
-    def __init__(self, object_name: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setObjectName(object_name)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-
-
-atexit.register(Element.dump_selectors)

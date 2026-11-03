@@ -4,64 +4,60 @@ from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
 
-from .models import Accents, Colors, Fonts
+from .models import Colors, Fonts
+
+APP_NAME = "Lyra"
+
+
+def _config_file() -> Path:
+    base = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.GenericConfigLocation
+    )
+    return Path(base) / APP_NAME / "config.json"
 
 
 @dataclass
 class Config:
     library_path: str | None = None
+    structure_library: bool = False
     colors: Colors = field(default_factory=Colors)
     dynamic_colors: bool = False
-    accents: Accents = field(default_factory=Accents)
     fonts: Fonts = field(default_factory=Fonts)
 
     def to_dict(self) -> dict:
         return {
             "library_path": self.library_path,
+            "structure_library": self.structure_library,
             "colors": self.colors.to_dict(),
             "dynamic_colors": self.dynamic_colors,
-            "accents": self.accents.to_dict(),
             "fonts": self.fonts.to_dict(),
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
-        colors = data.get("colors")
-        accents = data.get("accents")
-        fonts = data.get("fonts")
+        def section(key: str) -> dict:
+            value = data.get(key)
+            return value if isinstance(value, dict) else {}
+
         return cls(
             library_path=data.get("library_path"),
-            colors=Colors.from_dict(colors if isinstance(colors, dict) else {}),
+            structure_library=bool(data.get("structure_library", False)),
+            colors=Colors.from_dict(section("colors")),
             dynamic_colors=bool(data.get("dynamic_colors", False)),
-            accents=Accents.from_dict(accents if isinstance(accents, dict) else {}),
-            fonts=Fonts.from_dict(fonts if isinstance(fonts, dict) else {}),
+            fonts=Fonts.from_dict(section("fonts")),
         )
-
-    @staticmethod
-    def _config_path() -> Path:
-        directory = Path(
-            QStandardPaths.writableLocation(
-                QStandardPaths.StandardLocation.AppConfigLocation
-            )
-        )
-        directory.mkdir(parents=True, exist_ok=True)
-        return directory / "config.json"
 
     @classmethod
     def load(cls) -> "Config":
-        path = cls._config_path()
-        if not path.exists():
-            return cls()
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(_config_file().read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return cls()
-        if not isinstance(data, dict):
-            return cls()
-        return cls.from_dict(data)
+        return cls.from_dict(data) if isinstance(data, dict) else cls()
 
     def save(self) -> None:
-        path = self._config_path()
+        path = _config_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(self.to_dict(), indent=4, ensure_ascii=False), encoding="utf-8"
         )

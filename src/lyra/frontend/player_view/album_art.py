@@ -4,10 +4,7 @@ from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from ..rules import AppWidget, Radius
-
-DEFAULT_SIZE = 300
-HINT_WIDTH = 400
+from ..rules import DEFAULT_SIZE, HINT_WIDTH, AppWidget, Radius
 
 
 class AlbumArt(AppWidget):
@@ -69,7 +66,7 @@ class AlbumArt(AppWidget):
         )
         clip = QPainterPath()
         clip.addRoundedRect(
-            QRectF(x, y, target.width(), target.height()), Radius.MD, Radius.MD
+            QRectF(x, y, target.width(), target.height()), Radius.SM, Radius.SM
         )
         painter.setClipPath(clip)
         painter.drawPixmap(round(x), round(y), self._scaled_pixmap(target))

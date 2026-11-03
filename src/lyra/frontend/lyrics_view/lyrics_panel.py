@@ -1,5 +1,6 @@
 from typing import cast
 
+from backend import LyricLine
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
@@ -10,11 +11,8 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from ..rules import AppWidget, Element, Level
+from ..rules import RESUME_DELAY_MS, SCROLL_DURATION_MS, AppWidget, Element, Level
 from .lyric_item import LyricItem
-
-SCROLL_DURATION_MS = 400
-RESUME_DELAY_MS = 3000  # inactividad del scroll antes de volver al autoscroll
 
 
 class LyricsPanel(AppWidget):
@@ -43,12 +41,10 @@ class LyricsPanel(AppWidget):
         )
         self.scroll_animation.setDuration(SCROLL_DURATION_MS)
         self.scroll_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-
         self.resume_timer = QTimer(self)
         self.resume_timer.setSingleShot(True)
         self.resume_timer.setInterval(RESUME_DELAY_MS)
         self.resume_timer.timeout.connect(self._resume_autoscroll)
-
         self.scroll_area.viewport().installEventFilter(self)
         self.scroll_area.verticalScrollBar().installEventFilter(self)
 
@@ -56,15 +52,15 @@ class LyricsPanel(AppWidget):
     # CONTENIDO
     # ----------------------------------
 
-    def set_lyrics(self, lyrics: list[dict]) -> None:
+    def set_lyrics(self, lines: list[LyricLine]) -> None:
         """Reemplaza la letra. Una lista vacía la limpia."""
         self._release_scroll()
         self.scroll_animation.stop()
         self._clear_items()
         self._active_index = -1
         self.scroll_area.verticalScrollBar().setValue(0)
-        for lyric in lyrics:
-            item = LyricItem(time=lyric["time"], text=lyric["text"])
+        for line in lines:
+            item = LyricItem(line)
             item.seek_requested.connect(self._on_item_clicked)
             self._items.append(item)
             self.list_layout.insertWidget(self.list_layout.count() - 1, item)
@@ -88,7 +84,6 @@ class LyricsPanel(AppWidget):
         if self._active_index == -1:
             return
         item = self._items[self._active_index]
-        # espera a que el layout recalcule el tamaño de la línea activa
         QTimer.singleShot(0, lambda: self._scroll_to_item(item))
 
     def _scroll_to_item(self, item: LyricItem) -> None:

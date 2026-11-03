@@ -3,9 +3,10 @@ from .controller import Controller
 from .library import Library
 from .models import (
     Accent,
-    Accents,
+    Color,
     Colors,
     Fonts,
+    LyricLine,
     Metadata,
     PlaybackStatus,
     Playlist,
@@ -15,12 +16,13 @@ from .player import Player
 
 __all__ = [
     "Accent",
-    "Accents",
+    "Color",
     "Colors",
     "Config",
     "Controller",
     "Fonts",
     "Library",
+    "LyricLine",
     "Metadata",
     "PlaybackStatus",
     "Player",

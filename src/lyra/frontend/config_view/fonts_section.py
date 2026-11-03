@@ -2,12 +2,15 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QWidget
 
-from ..rules import AppWidget, Element, Level
-
-SIZE_RANGE = (6, 200)
-WEIGHT_RANGE = (100, 900)
-SIZE_WIDTH = 90
-WEIGHT_WIDTH = 90
+from ..rules import (
+    SIZE_RANGE,
+    SIZE_WIDTH,
+    WEIGHT_RANGE,
+    WEIGHT_WIDTH,
+    AppWidget,
+    Element,
+    Level,
+)
 
 
 class FontEntry(AppWidget):
@@ -25,7 +28,6 @@ class FontEntry(AppWidget):
         self.fonts_input = Element.input(
             "Inter, Segoe UI, sans-serif", on_edit=self._on_edited
         )
-
         self.row = Element.row(
             [
                 Element.info("Size"),
@@ -80,7 +82,6 @@ class FontsSection(AppWidget):
             entry = FontEntry(key.replace("_", " ").title(), font)
             entry.font_changed.connect(lambda f, k=key: self.font_changed.emit(k, f))
             self.font_entries[key] = entry
-
         self.main_layout = Element.main_layout(
             self,
             [Element.h2("Fonts"), *self.font_entries.values()],

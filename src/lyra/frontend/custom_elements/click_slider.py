@@ -3,8 +3,6 @@ from PySide6.QtWidgets import QSlider, QWidget
 
 
 class ClickSlider(QSlider):
-    """Slider que salta a donde haces clic y se arrastra desde cualquier punto."""
-
     def __init__(
         self,
         orientation: Qt.Orientation = Qt.Orientation.Horizontal,
@@ -17,7 +15,7 @@ class ClickSlider(QSlider):
     def _value_at(self, pos: QPointF) -> int:
         if self.orientation() == Qt.Orientation.Horizontal:
             ratio = pos.x() / max(1, self.width())
-        else:  # en vertical, el mínimo está abajo
+        else:
             ratio = 1.0 - pos.y() / max(1, self.height())
         ratio = max(0.0, min(1.0, ratio))
         if self.invertedAppearance():

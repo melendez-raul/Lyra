@@ -1,24 +1,22 @@
-import re
-
+from backend.models import Color
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QColorDialog, QWidget
 
-from ..rules import STRETCH, AppWidget, Element, Level
-
-_RGB = re.compile(r"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)")
-SWATCH_HEIGHT = 30
-
-
-def parse_rgb(color: str) -> tuple[int, int, int] | None:
-    match = _RGB.fullmatch(color)
-    return tuple(map(int, match.groups())) if match else None  # type: ignore[return-value]
+from ..rules import (
+    STRETCH,
+    SWATCH_HEIGHT,
+    TRANSPARENCY_LABEL_WIDTH,
+    AppWidget,
+    Element,
+    Level,
+)
 
 
 class ColorEntry(AppWidget):
-    color_changed = Signal(str)  # "rgb(r, g, b)"
+    color_changed = Signal(object)  # Color
 
-    def __init__(self, name: str, color: str, parent: QWidget | None = None) -> None:
+    def __init__(self, name: str, color: Color, parent: QWidget | None = None) -> None:
         super().__init__("colorEntry", parent)
         self._color = color
         self.swatch = Element.button("", on_click=self._pick)
@@ -27,38 +25,44 @@ class ColorEntry(AppWidget):
         self.main_layout = Element.main_layout(
             self, [Element.label(name), self.swatch], level=Level.TIGHT
         )
-        self.set_color(color)
+        self._paint()
 
-    def set_color(self, color: str) -> None:
-        self._color = color
-        self.swatch.setStyleSheet(f"background-color: {color};")
+    def _paint(self) -> None:
+        self.swatch.setStyleSheet(f"background-color: {self._color.to_qss()};")
 
     def _pick(self) -> None:
-        rgb = parse_rgb(self._color)
-        if rgb is None:
-            return
-        dialog = QColorDialog(QColor(*rgb), self)
+        c = self._color
+        dialog = QColorDialog(QColor(c.r, c.g, c.b), self)
         dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, False)
         if dialog.exec() != QColorDialog.DialogCode.Accepted:
             return
         picked = dialog.selectedColor()
         if not picked.isValid():
             return
-        color = f"rgb({picked.red()}, {picked.green()}, {picked.blue()})"
-        self.set_color(color)
-        self.color_changed.emit(color)
-
-
-TRANSPARENCY_LABEL_WIDTH = 50
+        self._color = Color(picked.red(), picked.green(), picked.blue())
+        self._paint()
+        self.color_changed.emit(self._color)
 
 
 class ColorsSection(AppWidget):
     transparency_changed = Signal(int)
-    color_changed = Signal(str, str)
+    color_changed = Signal(str, object)  # clave, Color
+    dynamic_colors_changed = Signal(bool)
 
-    def __init__(self, colors: dict, parent: QWidget | None = None) -> None:
-        super().__init__("themeSection", parent)
-        transparency = max(0, min(100, int(colors.get("transparency", 85))))
+    def __init__(
+        self,
+        colors: dict,  # Colors.to_dict(): hex y transparency
+        dynamic_colors: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__("colorsSection", parent)
+        transparency = max(0, min(100, int(colors.get("transparency", 80))))
+        self.dynamic_check = Element.check(
+            "Colores dinámicos",
+            checked=dynamic_colors,
+            on_toggle=self.dynamic_colors_changed.emit,
+            tooltip="Usar el color de la portada como acento",
+        )
         self.transparency_value = Element.label(f"{transparency}%")
         self.transparency_value.setFixedWidth(TRANSPARENCY_LABEL_WIDTH)
         self.transparency_value.setAlignment(
@@ -67,40 +71,38 @@ class ColorsSection(AppWidget):
         self.transparency_slider = Element.slider(
             value=transparency, on_change=self._on_transparency_changed
         )
-        self.transparency_layout = Element.row(
+        self.transparency_row = Element.row(
             [(self.transparency_slider, 1), self.transparency_value]
         )
-        self.color_entries: dict[str, ColorEntry] = {}
-        columns: tuple[list[ColorEntry], list[ColorEntry]] = ([], [])
-        index = 0
-        for key, color in colors.items():
+        entries: list[ColorEntry] = []
+        for key, value in colors.items():
             if key == "transparency":
                 continue
-            entry = ColorEntry(key.replace("_", " ").title(), color)
+            entry = ColorEntry(key.replace("_", " ").title(), Color.parse(value))
             entry.color_changed.connect(lambda c, k=key: self.color_changed.emit(k, c))
-            self.color_entries[key] = entry
-            columns[index % 2].append(entry)
-            index += 1
-        left = Element.column([*columns[0], STRETCH], level=Level.ROW)
-        right = Element.column([*columns[1], STRETCH], level=Level.ROW)
-        self.colors_layout = Element.row([left, right], level=Level.SECTION)
-        self.colors_layout.setStretch(0, 1)
-        self.colors_layout.setStretch(1, 1)
+            entries.append(entry)
         self.main_layout = Element.main_layout(
             self,
             [
                 Element.h2("Colors"),
+                self.dynamic_check,
                 Element.label("Background Transparency"),
-                self.transparency_layout,
-                self.colors_layout,
+                self.transparency_row,
+                self._two_columns(entries),
             ],
             level=Level.SECTION,
         )
 
+    @staticmethod
+    def _two_columns(entries: list[ColorEntry]):
+        """Reparte en zigzag: pares a la izquierda, impares a la derecha."""
+        left = Element.column([*entries[0::2], STRETCH], level=Level.ROW)
+        right = Element.column([*entries[1::2], STRETCH], level=Level.ROW)
+        row = Element.row([left, right], level=Level.SECTION)
+        row.setStretch(0, 1)
+        row.setStretch(1, 1)
+        return row
+
     def _on_transparency_changed(self, value: int) -> None:
         self.transparency_value.setText(f"{value}%")
         self.transparency_changed.emit(value)
-
-    def set_color(self, key: str, color: str) -> None:
-        if key in self.color_entries:
-            self.color_entries[key].set_color(color)

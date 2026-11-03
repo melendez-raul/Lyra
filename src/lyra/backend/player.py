@@ -22,32 +22,35 @@ class Player(QObject):
         self._player.mediaStatusChanged.connect(self._on_media_status_changed)
         self._player.errorOccurred.connect(self._on_error)
 
+    # ------------------------------------------------------------------
+    # Público
+    # ------------------------------------------------------------------
+
     def play(self, path: str) -> None:
-        self._ensure_open()
+        if self._closed:
+            return
         self._track = path
         self._error = False
         self._player.setSource(QUrl.fromLocalFile(path))
         self._player.play()
-        self._emit_status()
 
     def pause(self) -> None:
-        self._ensure_open()
-        self._player.pause()
-        self._emit_status()
+        if not self._closed:
+            self._player.pause()
 
     def resume(self) -> None:
-        self._ensure_open()
-        self._player.play()
-        self._emit_status()
+        if not self._closed:
+            self._player.play()
 
     def stop(self) -> None:
-        self._ensure_open()
-        self._player.stop()
-        self._track = None
+        if self._closed:
+            return
+        self._release()
         self._emit_status()
 
     def seek(self, seconds: float) -> None:
-        self._ensure_open()
+        if self._closed:
+            return
         position_ms = max(0, int(seconds * 1000))
         duration_ms = self._player.duration()
         if duration_ms > 0:
@@ -56,13 +59,30 @@ class Player(QObject):
 
     def get_status(self) -> PlaybackStatus:
         duration_ms = self._player.duration()
-
         return PlaybackStatus(
             state=self._get_state(),
             track=self._track,
             time=self._player.position() / 1000,
             duration=duration_ms / 1000 if duration_ms > 0 else None,
         )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._release()
+        self._closed = True
+        self._emit_status()
+
+    # ------------------------------------------------------------------
+    # Privado
+    # ------------------------------------------------------------------
+
+    def _release(self) -> None:
+        """Detiene y descarga la pista actual."""
+        self._player.stop()
+        self._player.setSource(QUrl())
+        self._track = None
+        self._error = False
 
     def _get_state(self) -> PlaybackState:
         if self._closed:
@@ -84,7 +104,7 @@ class Player(QObject):
     def _emit_status(self, *_args) -> None:
         self.status_changed.emit(self.get_status())
 
-    def _on_media_status_changed(self, status) -> None:
+    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
             self._emit_status()
             self.track_finished.emit()
@@ -97,17 +117,4 @@ class Player(QObject):
 
     def _on_error(self, *_args) -> None:
         self._error = True
-        self._emit_status()
-
-    def _ensure_open(self) -> None:
-        if self._closed:
-            raise RuntimeError("Player is closed")
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._player.stop()
-        self._player.setSource(QUrl())
-        self._track = None
-        self._closed = True
         self._emit_status()
